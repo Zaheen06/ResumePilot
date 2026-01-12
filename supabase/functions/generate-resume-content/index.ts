@@ -12,44 +12,64 @@ serve(async (req) => {
 
   try {
     const { type, context } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     let systemPrompt = "";
     let userPrompt = "";
 
-    switch (type) {
-      case "summary":
-        systemPrompt = "You are an expert resume writer. Generate professional, ATS-friendly resume summaries that highlight key achievements and career goals. Use action verbs and quantifiable results when possible. Keep it concise (2-4 sentences).";
-        userPrompt = `Generate a professional summary for ${context.name || 'a professional'}. ${context.currentContent ? `Current content to improve: ${context.currentContent}` : 'Create a compelling summary from scratch.'}`;
-        break;
-      case "experience":
-        systemPrompt = "You are an expert resume writer. Generate ATS-friendly bullet points for work experience. Start each bullet with a strong action verb. Include quantifiable achievements when possible. Focus on impact and results.";
-        userPrompt = `Generate 3-5 professional bullet points for a ${context.position} at ${context.company}. ${context.currentBullets?.length ? `Improve these bullets: ${context.currentBullets.join('; ')}` : 'Create compelling achievement-focused bullets.'}`;
-        break;
-      case "improve":
-        systemPrompt = "You are an expert resume writer. Improve the given resume content to be more professional, ATS-friendly, and impactful. Use action verbs, add quantifiable results where appropriate, and ensure clarity.";
-        userPrompt = `Improve this ${context.section} content: "${context.currentContent}". Make it more professional and ATS-optimized while keeping the meaning.`;
-        break;
-      default:
-        throw new Error("Invalid type");
-    }
+   switch (type) {
+  case "summary":
+    systemPrompt =
+      "You are an expert resume writer. Generate ONLY a professional, ATS-friendly resume summary. The output must be 2–4 sentences. Do NOT include headings, explanations, options, bullet points, markdown, or analysis. Return plain text only.";
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    userPrompt = context.currentContent
+      ? `Rewrite the following resume summary to be more professional, concise, and ATS-optimized. Keep it within 2–4 sentences. Text: ${context.currentContent}`
+      : `Write a professional 2–4 sentence resume summary for ${
+          context.name || "a final-year Computer Science Engineering student"
+        } with full-stack web development skills. Return plain text only.`;
+    break;
+
+  case "experience":
+    systemPrompt =
+      "You are an expert resume writer. Generate ONLY ATS-friendly resume bullet points. Do NOT include explanations, headings, or extra text.";
+
+    userPrompt = context.currentBullets?.length
+      ? `Improve the following resume bullets to be more impactful and ATS-optimized: ${context.currentBullets.join(
+          "; "
+        )}`
+      : `Generate 3–5 strong resume bullet points for a ${context.position} at ${context.company}.`;
+    break;
+
+  case "improve":
+  systemPrompt =
+    "You are an expert resume writer. Rewrite the given resume content to be professional, concise, and ATS-friendly. Output ONLY the rewritten text as a single paragraph. Do not include options, symbols, bullet points, headings, or explanations.";
+
+ userPrompt = `Rewrite the following resume content while preserving its original meaning. Produce a strong, professional single paragraph of 3–4 lines only. Do not use bullet points, symbols, stars, headings, or multiple paragraphs. Return only the rewritten text: ${context.currentContent}`;
+
+  break;
+
+
+  default:
+    throw new Error("Invalid type");
+}
+
+
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
+        contents: [{
+          parts: [{
+            text: `${systemPrompt}\n\n${userPrompt}`
+          }]
+        }]
       }),
     });
 
@@ -64,7 +84,7 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     return new Response(JSON.stringify({ content }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
