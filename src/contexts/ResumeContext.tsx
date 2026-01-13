@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { Resume, ResumeContent, DEFAULT_RESUME_CONTENT, TemplateType } from '@/types/resume';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
@@ -189,6 +189,21 @@ export const ResumeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...prev,
       content: { ...prev.content, ...content },
     } : null);
+
+    // Auto-save after 2 seconds of inactivity
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      if (currentResume) {
+        try {
+          const updatedContent = { ...currentResume.content, ...content };
+          await updateResume(currentResume.id, { content: updatedContent });
+        } catch (error) {
+          console.error('Auto-save failed:', error);
+        }
+      }
+    }, 2000);
   };
 
   const updateTemplate = (template: TemplateType) => {

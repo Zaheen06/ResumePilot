@@ -14,7 +14,7 @@ export const Footer = () => {
           </Link>
           
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} ResumeAI. All rights reserved.
+            © {new Date().getFullYear()} ResumePilot.
           </p>
           
           <div className="flex items-center gap-6">
