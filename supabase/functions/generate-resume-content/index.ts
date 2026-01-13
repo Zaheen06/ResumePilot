@@ -45,12 +45,11 @@ serve(async (req) => {
     break;
 
   case "improve":
-  systemPrompt =
-    "You are an expert resume writer. Rewrite the given resume content to be professional, concise, and ATS-friendly. Output ONLY the rewritten text as a single paragraph. Do not include options, symbols, bullet points, headings, or explanations.";
+    systemPrompt =
+      "You are an expert resume writer. Rewrite the given resume content into a single paragraph of exactly 3-4 sentences. IMPORTANT: Return ONLY the rewritten paragraph text. Do NOT include any of the following: options, alternatives, explanations, markdown formatting, bullet points, headings, labels, or meta-commentary. Just output the paragraph text directly.";
 
- userPrompt = `Rewrite the following resume content while preserving its original meaning. Produce a strong, professional single paragraph of 3–4 lines only. Do not use bullet points, symbols, stars, headings, or multiple paragraphs. Return only the rewritten text: ${context.currentContent}`;
-
-  break;
+    userPrompt = `Rewrite this resume content into a single professional paragraph of exactly 3-4 sentences. Make it more impactful and ATS-optimized while preserving the original meaning. Return ONLY the paragraph text, nothing else: ${context.currentContent}`;
+    break;
 
 
   default:
@@ -84,7 +83,82 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    let content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    // Post-process content for "improve" type to ensure single paragraph format
+    if (type === "improve" && content) {
+      // Strategy: Extract the first blockquote paragraph (Option 1) and return it clean
+      
+      // Find blockquotes with bold text - format: "> **text**" (can span multiple lines)
+      // Match: ">" followed by optional whitespace, then "**", then content (including newlines), then "**"
+      const blockquoteRegex = />\s*\*\*([\s\S]*?)\*\*/g;
+      const blockquoteMatches = [...content.matchAll(blockquoteRegex)];
+      
+      if (blockquoteMatches.length > 0) {
+        // Take the first blockquote content (Option 1)
+        content = blockquoteMatches[0][1].trim();
+      } else {
+        // Fallback: try to find blockquotes without bold markers
+        // Match lines starting with ">" until we hit a blank line or another ">"
+        const simpleBlockquoteRegex = />\s*([^\n>]+(?:\n[^>\n]+)*?)(?=\n\n|\n>|$)/gs;
+        const simpleMatches = [...content.matchAll(simpleBlockquoteRegex)];
+        if (simpleMatches.length > 0) {
+          content = simpleMatches[0][1].trim();
+        }
+      }
+      
+      // If still no good content, try to find the first substantial paragraph
+      if (!content || content.length < 50) {
+        // Look for lines that are actual sentences (contain periods and are substantial)
+        const lines = content.split(/\n+/).map(l => l.trim()).filter(l => l.length > 30);
+        const paragraphLines: string[] = [];
+        
+        for (const line of lines) {
+          // Skip option labels and explanations
+          if (line.match(/^(option|version|alternative|choice|here'?s?|why|key|ranging)/i)) continue;
+          if (line.match(/^---/)) continue;
+          
+          // If line has sentences, it's likely content
+          if (line.includes(".") && line.length > 50) {
+            paragraphLines.push(line);
+            const sentenceCount = (line.match(/\./g) || []).length;
+            if (sentenceCount >= 3) break; // Found a good paragraph
+          }
+        }
+        
+        if (paragraphLines.length > 0) {
+          content = paragraphLines[0];
+        }
+      }
+      
+      // Remove ALL markdown formatting
+      content = content
+        .replace(/\*\*/g, "") // Remove bold markdown
+        .replace(/\*/g, "") // Remove asterisks
+        .replace(/__/g, "") // Remove underline markdown
+        .replace(/#{1,6}\s+/g, "") // Remove markdown headers
+        .replace(/^[-*+]\s+/gm, "") // Remove bullet points
+        .replace(/^\d+\.\s+/gm, "") // Remove numbered lists
+        .replace(/```[\s\S]*?```/g, "") // Remove code blocks
+        .replace(/`/g, "") // Remove inline code markers
+        .replace(/^>\s*/gm, "") // Remove blockquote markers
+        .replace(/\s+/g, " ") // Multiple spaces/newlines to single space
+        .trim();
+      
+      // Ensure it ends with a period
+      if (content && !content.endsWith(".")) {
+        content += ".";
+      }
+      
+      // Ensure it's 3-4 sentences (trim if too many)
+      const sentenceCount = (content.match(/\./g) || []).length;
+      if (sentenceCount > 4) {
+        const sentences = content.split(/\.\s+/).filter(s => s.trim());
+        if (sentences.length >= 3) {
+          content = sentences.slice(0, 4).join(". ") + ".";
+        }
+      }
+    }
 
     return new Response(JSON.stringify({ content }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
