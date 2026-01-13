@@ -1,0 +1,3 @@
+- [x] Update index.html to remove Lovable references and set ResumePilot meta tags
+- [x] Update README.md to replace Lovable content with ResumePilot description
+- [x] Update package.json to remove lovable-tagger dependency and update project name
